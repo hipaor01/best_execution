@@ -4,10 +4,11 @@ from typing import Mapping, Optional
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.environment.best_execution import BestExecutionEnv
 from src.environment.config import EnvironmentConfig
-from src.rewards import VwapRewardStrategy
+from src.rewards import RewardContext, VwapRewardStrategy
 
 
 def _make_market_data(
@@ -105,6 +106,37 @@ def test_episode_finishes_when_time_is_exhausted() -> None:
     assert env.exec_vol < env.vol_care
 
 
+@pytest.mark.parametrize(
+    ("executions_before_timeout", "expected_penalty"),
+    [
+        (0, -1.0),
+        (1, -0.5),
+    ],
+)
+def test_time_exhaustion_penalizes_pending_care_volume(
+    executions_before_timeout: int,
+    expected_penalty: float,
+) -> None:
+    env = _make_environment()
+    env.reset()
+    assert env.vol_care == 2
+
+    for _ in range(executions_before_timeout):
+        _, _, done, _ = env.step(action=1)
+        assert not done
+
+    while env.state_pos < env.episode_bins - 1:
+        _, _, done, _ = env.step(action=0)
+        assert not done
+
+    observation, reward, done, _ = env.step(action=0)
+
+    assert done
+    assert observation is None
+    assert env.state_pos == env.episode_bins
+    assert reward == pytest.approx(expected_penalty)
+
+
 def test_episode_finishes_when_care_order_is_completed() -> None:
     env = _make_environment()
     env.reset()
@@ -113,12 +145,26 @@ def test_episode_finishes_when_care_order_is_completed() -> None:
         _, _, done, _ = env.step(action=1)
         assert not done
 
-    observation, _, done, _ = env.step(action=1)
+    execution_price = float(env.episode["ask1"].iloc[env.state_pos])
+    immediate_reward = env.reward_strategy.compute(
+        RewardContext(
+            execution_price=execution_price,
+            execution_volume=1,
+            episode_vwap=env.episode_vwap,
+            state_pos=env.state_pos,
+            episode_bins=env.episode_bins,
+            executed_volume=env.exec_vol + 1,
+            care_volume=env.vol_care,
+        )
+    )
+
+    observation, reward, done, _ = env.step(action=1)
 
     assert done
     assert observation is None
     assert env.exec_vol == env.vol_care
     assert env.state_pos < env.episode_bins
+    assert reward == pytest.approx(immediate_reward)
 
 
 def test_care_volume_stays_within_configured_limits() -> None:
