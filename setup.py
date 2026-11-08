@@ -5,6 +5,10 @@ From the repo root, inside a Python 3.9-3.11 virtual environment (3.11 recommend
 
     pip install -e .
 
+To include the development dependencies used to run the tests:
+
+    pip install -e ".[dev]"
+
 This installs the dependencies below and makes everything under `src/` importable
 from any notebook, e.g. `from src.agents.dqn import DDQNAgent`.
 """
@@ -31,4 +35,10 @@ setup(
         "argon2-cffi-bindings==25.1.0",  # via jupyterlab -> jupyter-server -> argon2-cffi
         "cryptography==48.0.1",  # via tensorflow -> tensorboard -> google-auth
     ],
+    extras_require={
+        "dev": [
+            # pytest 9 requires Python >= 3.10, while this project supports 3.9
+            "pytest>=8.4,<9",
+        ],
+    },
 )
