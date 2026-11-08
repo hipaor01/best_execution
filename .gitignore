@@ -131,3 +131,9 @@ dmypy.json
 data/new_version/
 
 data/
+
+uv.lock
+
+tmp/
+
+.DS_Store
