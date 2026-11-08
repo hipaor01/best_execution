@@ -49,6 +49,7 @@ class RewardStrategy(ABC):
         """Calcula la recompensa asociada a una acción."""
         raise NotImplementedError
 
+    @abstractmethod
     def compute_terminal(self, context: RewardContext) -> float:
         """Calcula la recompensa adicional al finalizar el episodio."""
-        return 0.0
+        raise NotImplementedError
