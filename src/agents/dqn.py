@@ -63,8 +63,6 @@ class DDQNAgent():
         return model(s).numpy()
 
     def act(self, s):
-        if self.env.state_pos == 0:
-            return 1
         if self._trainable:
             if np.random.rand() > self.epsilon:
                 a = self._act_no_explore(s)
