@@ -4,19 +4,26 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from collections import deque
 
+from .exploration import ExplorationPolicy
+
 
 class DDQNAgent():
 
     def __init__(
         self, env, gamma=0.99, epsilon=0.9, alpha=0.01,
         batch_size=64, buffer_size=50000,
-        hidden_neurons=32, trainable=True
+        hidden_neurons=32, trainable=True, exploration_policy=None
     ):
 
         self.env = env
         self.na = env.n_actions
         self.n_features = env.n_features
-        self.epsilon = epsilon
+        # Ejercicio 3: si se inyecta una ExplorationPolicy, epsilon lo decide
+        # ella; sin política se conserva el atributo editable de los ej. 1-2.
+        if exploration_policy is not None and not isinstance(exploration_policy, ExplorationPolicy):
+            raise TypeError("exploration_policy must be an ExplorationPolicy instance")
+        self.exploration_policy = exploration_policy
+        self._epsilon = epsilon
         self.gamma = gamma
         self.minus_factor = None
         self.div_factor = None
@@ -35,6 +42,18 @@ class DDQNAgent():
         self.target_model = self.network()
         self.update_target()
         self._trainable = trainable
+
+    @property
+    def epsilon(self):
+        if getattr(self, "exploration_policy", None) is not None:
+            return self.exploration_policy.epsilon
+        return self._epsilon
+
+    @epsilon.setter
+    def epsilon(self, value):
+        if getattr(self, "exploration_policy", None) is not None:
+            raise AttributeError("epsilon is controlled by exploration_policy")
+        self._epsilon = value
 
     def network(self):
         inp = Input(shape=(self.n_features, ))
