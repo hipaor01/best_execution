@@ -1,46 +1,167 @@
-# Execution Algorithms Using Reinforcement Learning
+# Best Execution con aprendizaje por refuerzo
 
-- [Introduction](#introduction)
-- [Motivation of the project](#motivation-of-the-project)
-- [Installation](#installation)
+Proyecto académico de ejecución algorítmica desarrollado para el Máster BME. El repositorio construye, de forma incremental, un entorno de ejecución de órdenes CARE, una referencia TWAP y un agente DDQN con exploración adaptativa, parada temprana y checkpoints reproducibles.
 
-<!-- toc -->
+> [!IMPORTANT]
+> Es un simulador con fines docentes y experimentales. No modela impacto de mercado ni costes de transacción y no debe utilizarse como sistema de ejecución en producción.
 
-## Introduction
+## Navegación rápida
 
-In the financial industry, once an agent (natural person or financial institution) has made the decision to make or undo an investment in a particular asset, this decision is materialized by sending an instruction of purchase or sale to a broker.
+| Ruta | Contenido |
+| --- | --- |
+| [`src/`](src/) | Implementación reutilizable del entorno, recompensas, agentes y entrenamiento. |
+| [`workshop/submission/`](workshop/submission/) | Notebooks entregables de los ejercicios 1, 2 y 3 + 4C. |
+| [`tests/`](tests/) | Pruebas del entorno, TWAP, exploración, parada y checkpoints. |
+| [`data/`](data/) | Datos de mercado serializados utilizados por los notebooks. |
+| [`output/pdf/`](output/pdf/) | Resúmenes técnicos y presentación exportada a PDF. |
+| [`images/`](images/) | Gráficos e imágenes empleados en el workshop. |
 
-Small amount orders are usually sent directly to the market through the broker, in which case it would be a DMA or direct market access order. These orders go through a series of controls established by the broker, but in general, they are not modify any of the order parameters (type, price, volume, shipping time, restrictions, etc).
+## Cómo encajan las piezas
 
-Big enough orders are not sent directly to the market due to the impact that these can have when reaching the market due to their high volume. In these cases, CARE orders or orders to be cared for are sent. They reach the broker with the aim that the broker manages it throughout the time to avoid impacting the market.
+```text
+Datos de mercado
+      │
+      ▼
+BestExecutionEnv ─── EnvironmentConfig
+      │
+      ├── RewardStrategy ── VWAP / TWAP
+      │
+      ▼
+DDQNAgent ────────── ExplorationPolicy
+      │               ├── agenda lineal
+      │               └── epsilon por desempeño
+      ▼
+Trainer ───────────── TwapEvaluator
+      │
+      ├── parada temprana
+      ├── checkpoints y reanudación
+      └── historiales de entrenamiento y evaluación
+```
 
-The management of these orders has traditionally been carried out by traders or operators of market that manually chopped CARE orders into smaller orders (child orders), sent to the market and managed throughout the trading session. With the advance of the electronification of the markets, brokers began to develop execution algorithms that systematically carried out the work of hashing and management of CARE orders over time.
+- El entorno encapsula el estado del episodio, las acciones y el registro de ejecuciones.
+- Las recompensas implementan una interfaz común, por lo que pueden cambiarse sin reescribir el entorno.
+- El agente DDQN recibe una política de exploración inyectable.
+- El entrenador coordina aprendizaje, evaluación, parada y persistencia.
+- Los notebooks cargan los datos, configuran estos componentes y conservan la evidencia experimental.
 
-Execution algorithms are automated trading systems that receive an instruction complex by the client and transform it into a series of orders, modifications and cancellations. Those are sent over time to the different markets and brokers, with the objective of complying with the instruction given by the client, that is, maximizing the result obtained with respect to a specific benchmark.
+## Estructura del repositorio
 
-The most used are the Slicing and Smart Order Routing algorithms. Slicing algorithms aim to distribute the volume of a large order over time. These algorithms confront what Robert Kissel and Morton Glantz (Optimal Trading Strategies: Quantitative Approaches for Managing Market Impact and Trading Risk - 2003) called the trader's dilemma: if the order is executed quickly, sending many orders in a short time to the market, there will be a great impact on the market that is translated to uncompetitive prices, while if the order takes a long time, the price it can evolve against us assuming a great market risk.
+```text
+best-execution/
+├── src/
+│   ├── environment/
+│   │   ├── best_execution.py   # Entorno y dinámica de los episodios
+│   │   └── config.py           # Configuración tipada e inmutable
+│   ├── rewards/
+│   │   ├── base.py             # Contrato RewardStrategy y RewardContext
+│   │   ├── vwap.py             # Recompensa respecto al VWAP
+│   │   └── twap.py             # Recompensa de seguimiento temporal
+│   ├── agents/
+│   │   ├── dqn.py              # Agente Double DQN
+│   │   ├── exploration.py      # Exploración lineal y por desempeño
+│   │   └── twap.py             # Política TWAP determinista de referencia
+│   ├── training/
+│   │   ├── evaluation.py       # Casos fijos y métricas de evaluación
+│   │   └── trainer.py          # Entrenamiento, parada y checkpoints
+│   └── report/
+│       └── report.py           # Utilidades de visualización
+├── workshop/
+│   ├── execution_lab.ipynb
+│   ├── execution_lab-step_by_step.ipynb
+│   └── submission/
+│       ├── exercise_1.ipynb
+│       ├── exercise_2.ipynb
+│       └── exercise_3_4.ipynb
+├── tests/
+│   ├── test_environment.py
+│   ├── test_twap.py
+│   └── test_exploration.py
+├── data/                       # REP, SAN y datos originales del workshop
+├── images/                     # Evidencia gráfica
+├── output/
+│   ├── pdf/                    # Informes y presentación exportada
+│   └── pptx/                   # Fuentes o exportaciones de la presentación
+├── .github/workflows/tests.yml # Integración continua con Python 3.11
+├── setup.py                    # Paquete y dependencias canónicas
+└── LICENSE
+```
 
-## Motivation of the project
+## Evolución por ejercicios
 
-This is the base of a 10 hours project designed to explain to my students the all process of a real reinforcement learning (RL) problem. Most of the problems they deal during the subject are, for simplicity, game simulators were the designed MDP is stationary and the focus is on the RL theory. Since the simulation part is a matter of programming and is usually *ad hoc* for the problem this is not a topic fully extended during the RL subjects.
+| Bloque | Objetivo | Código principal | Notebook |
+| --- | --- | --- | --- |
+| Ejercicio 1 | Construir un entorno modular, una recompensa VWAP y una demostración DDQN reproducible. | `src/environment/`, `src/rewards/vwap.py`, `src/agents/dqn.py` | [`exercise_1.ipynb`](workshop/submission/exercise_1.ipynb) |
+| Ejercicio 2 | Aprender una pauta TWAP, calibrar el agente y evaluar la finalización de las órdenes. | `src/rewards/twap.py`, `src/agents/twap.py` | [`exercise_2.ipynb`](workshop/submission/exercise_2.ipynb) |
+| Ejercicio 3 + 4C | Adaptar epsilon al desempeño, detener el entrenamiento y guardar o reanudar checkpoints. | `src/agents/exploration.py`, `src/training/` | [`exercise_3_4.ipynb`](workshop/submission/exercise_3_4.ipynb) |
 
-Some students told me that they had skill enough to solve defined RL tasks but they had difficulties to desing and develop a complete project from the scratch. This repository is the result of that conversation, I prepared a project where the students could develop a naive order book simulator where they can place orders of a certain volume and execute them at a certain price. Using that order book simulator the main task is to develop the rewards and the RL models to obtain algorithms with a similar performance than the traditional algorithms currently used. The following image present an example of DQN following a TWAP policy.
+## Instalación recomendada
 
-![DQNTWAP](./images/twap_model/twap_reproduction_dqn.png)
+La fuente canónica de dependencias es [`setup.py`](setup.py). El proyecto admite Python `>=3.9.2,<3.12`; se recomienda Python 3.11, que es también la versión utilizada en integración continua.
 
-``` Note: The simulator assumes multiple non realistic situations,for example the non market impact. ¡For a more realistic order book simulator to develop RL stay connected! ```
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
 
-## Installation
+La instalación editable permite importar el paquete desde los notebooks:
 
-There are two ways to set up the environment:
+```python
+from src.agents.dqn import DDQNAgent
+from src.environment.best_execution import BestExecutionEnv
+from src.environment.config import EnvironmentConfig
+from src.rewards import TwapRewardStrategy, VwapRewardStrategy
+```
 
-- **Dev Container** (requires Docker): open the repo in VS Code and run *Dev Containers: Reopen in Container*.
-- **Local** (no Docker): create a Python 3.9-3.11 virtual environment (3.11 recommended) and install the repo from its root:
+### Sobre el Dev Container
 
-  ```bash
-  python3.11 -m venv .venv         # Windows: py -3.11 -m venv .venv
-  source .venv/bin/activate        # Windows: .venv\Scripts\activate
-  pip install -e .
-  ```
+Las carpetas [`.devcontainer/`](.devcontainer/) y [`dockerfiles/`](dockerfiles/) conservan el entorno original del workshop, basado en la imagen `jesussanz/best_execution:v1`. Su archivo `requirements.txt` contiene versiones históricas y no debe combinarse con las dependencias actuales de `setup.py`. Para reproducir los tests y los notebooks entregables se recomienda la instalación local anterior.
 
-  This installs the pinned dependencies from `setup.py` (prebuilt wheels for Windows, macOS Intel, macOS 12+ on Apple Silicon and Linux; no compiler needed) and makes `src/` importable from any notebook, e.g. `from src.agents.dqn import DDQNAgent`.
+## Ejecución
+
+### Tests
+
+```bash
+python -m pytest tests -q
+```
+
+La misma suite se ejecuta automáticamente en [GitHub Actions](.github/workflows/tests.yml).
+
+### Notebooks
+
+Inicia Jupyter desde la raíz del repositorio para mantener válidas las rutas a `data/` y `src/`:
+
+```bash
+jupyter lab
+```
+
+Orden recomendado de lectura:
+
+1. [`workshop/submission/exercise_1.ipynb`](workshop/submission/exercise_1.ipynb)
+2. [`workshop/submission/exercise_2.ipynb`](workshop/submission/exercise_2.ipynb)
+3. [`workshop/submission/exercise_3_4.ipynb`](workshop/submission/exercise_3_4.ipynb)
+
+## Datos
+
+Los notebooks utilizan principalmente `data/rep_data.pkl`, que contiene particiones como `train`. Los ficheros de `data/new_version/` corresponden al material original o alternativo del workshop.
+
+Los archivos son binarios de confianza del proyecto y se cargan con `pickle`; no debe utilizarse este mecanismo con datos descargados de fuentes no confiables.
+
+## Documentación y resultados
+
+- [Resumen consolidado de decisiones técnicas](output/pdf/resumen_decisiones_tecnicas_completo.pdf)
+- [Resumen del ejercicio 1](output/pdf/resumen_decisiones_ejercicio_1.pdf)
+- [Resumen del ejercicio 2](output/pdf/resumen_decisiones_ejercicio_2.pdf)
+- [Resumen de los ejercicios 3 + 4C](output/pdf/resumen_decisiones_ejercicio_3_4.pdf)
+- [Presentación de cinco minutos](output/pdf/best_execution_presentacion_5_minutos.pdf)
+
+## Integrantes
+
+- Javier Chulvi
+- Hugo Vinuesa
+- Higinio Paterna
+
+## Licencia
+
+Este repositorio se distribuye bajo los términos de [`LICENSE`](LICENSE).
